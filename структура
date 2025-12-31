@@ -1,0 +1,12 @@
+trade_quote/
+├── core/
+│   ├── __init__.py
+│   ├── models.py
+│   ├── rules.py
+│   └── calculator.py
+├── cli/
+│   ├── __init__.py
+│   └── app.py
+├── data/
+│   └── trades.json
+└── main.py

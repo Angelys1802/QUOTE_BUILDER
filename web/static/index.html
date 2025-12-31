@@ -1,0 +1,275 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Quote Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui; max-width: 980px; margin: 20px auto; padding: 0 14px; }
+    h1 { margin: 0 0 6px; }
+    .muted { color: #666; font-size: 14px; margin-bottom: 14px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 14px; padding: 14px; }
+    .row { display: grid; grid-template-columns: 240px 1fr; gap: 10px; align-items: center; margin: 8px 0; }
+    label { font-weight: 600; }
+    input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
+    input[type="checkbox"] { width: auto; transform: scale(1.15); }
+
+    button { padding: 10px 14px; border-radius: 12px; border: 1px solid #ccc; cursor: pointer; font-weight: 700; }
+    button:hover { border-color: #999; }
+
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 8px 6px; border-bottom: 1px solid #eee; }
+    td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .notes { margin-top: 10px; }
+    .tag { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #f3f3f3; margin: 4px 6px 0 0; font-size: 13px; }
+
+    .hidden { display: none; }
+    .err { color: #b00020; font-weight: 700; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Quote Builder</h1>
+  <div class="muted">UI v0.2 — live testing your pricing engine</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <label>Trade</label>
+        <select id="trade"></select>
+      </div>
+
+      <div class="row">
+        <label>Preset</label>
+        <select id="preset"></select>
+      </div>
+
+      <hr/>
+
+      <div class="row">
+        <label>Area (sqft)</label>
+        <input id="area" type="number" step="0.01" value="113">
+      </div>
+
+      <div class="row" id="row_waste">
+        <label>Waste (%)</label>
+        <input id="waste" type="number" step="0.1" value="10">
+      </div>
+
+      <div class="row">
+        <label>Include labor</label>
+        <input id="include_labor" type="checkbox" checked>
+      </div>
+
+      <div class="row">
+        <label>Labor rate ($/sqft)</label>
+        <input id="labor_rate" type="number" step="0.01" value="10">
+      </div>
+
+      <div class="row">
+        <label>Client supplies materials</label>
+        <input id="client_supplies" type="checkbox">
+      </div>
+
+      <div class="row" id="row_material_rate">
+        <label>Material rate ($/sqft)</label>
+        <input id="material_rate" type="number" step="0.01" value="10">
+      </div>
+
+      <div class="row" id="row_manual_toggle">
+        <label>Manual override (CUSTOM)</label>
+        <input id="use_manual" type="checkbox">
+      </div>
+
+      <div class="row" id="row_manual_total">
+        <label>Manual total ($)</label>
+        <input id="manual_total" type="number" step="0.01" value="1000">
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+        <button id="calc">Calculate</button>
+        <span class="muted" id="preset_hint"></span>
+      </div>
+
+      <div class="err" id="err"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Breakdown</h3>
+
+      <table>
+        <tr><td>Actual area</td><td id="b_area">—</td></tr>
+        <tr><td>Area w/ waste</td><td id="b_eff">—</td></tr>
+        <tr><td>Labor</td><td id="b_labor">—</td></tr>
+        <tr><td>Materials</td><td id="b_mat">—</td></tr>
+        <tr><td>Markup</td><td id="b_markup">—</td></tr>
+        <tr><td>Handling</td><td id="b_handling">—</td></tr>
+        <tr><td><b>Subtotal</b></td><td id="b_sub"><b>—</b></td></tr>
+        <tr><td>GST</td><td id="b_gst">—</td></tr>
+        <tr><td><b>Total</b></td><td id="b_total"><b>—</b></td></tr>
+      </table>
+
+      <div class="notes" id="notes"></div>
+    </div>
+  </div>
+
+<script>
+let TRADES = {};
+let CURRENT_PRESET = null;
+
+const $ = (id) => document.getElementById(id);
+
+function money(x) {
+  const n = Number(x ?? 0);
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function loadTrades() {
+  const res = await fetch("/api/trades");
+  TRADES = await res.json();
+
+  const tradeSel = $("trade");
+  tradeSel.innerHTML = "";
+
+  Object.keys(TRADES).forEach(tid => {
+    const opt = document.createElement("option");
+    opt.value = tid;
+    opt.textContent = `${TRADES[tid].label} (${tid})`;
+    tradeSel.appendChild(opt);
+  });
+
+  tradeSel.value = Object.keys(TRADES)[0];
+  loadPresets();
+}
+
+function loadPresets() {
+  const tradeId = $("trade").value;
+  const presetSel = $("preset");
+  presetSel.innerHTML = "";
+
+  const presets = TRADES[tradeId].presets;
+
+  Object.keys(presets).forEach(pid => {
+    const p = presets[pid];
+    const opt = document.createElement("option");
+    opt.value = pid;
+    opt.textContent = `${p.label} (${pid}) — ${p.pricing_type}`;
+    presetSel.appendChild(opt);
+  });
+
+  presetSel.value = Object.keys(presets)[0];
+  applyPresetDefaults();
+}
+
+function applyPresetDefaults() {
+  const tradeId = $("trade").value;
+  const presetId = $("preset").value;
+
+  CURRENT_PRESET = TRADES[tradeId].presets[presetId];
+
+  // Set default include flags from preset
+  $("include_labor").checked = !!CURRENT_PRESET.include_labor;
+
+  // Include materials depends on client supplies toggle
+  syncMaterialsFromClientSupplies();
+
+  // Show manual override only for CUSTOM
+  const isCustom = (CURRENT_PRESET.pricing_type === "CUSTOM");
+  $("row_manual_toggle").classList.toggle("hidden", !isCustom);
+  $("row_manual_total").classList.toggle("hidden", !isCustom || !$("use_manual").checked);
+
+  $("preset_hint").textContent = isCustom
+    ? "CUSTOM: choose Auto or Manual override"
+    : `Preset pricing: ${CURRENT_PRESET.pricing_type}`;
+
+  syncVisibility();
+}
+
+function syncVisibility() {
+  // Hide waste/material rate when materials excluded
+  const includeMaterials = !$("client_supplies").checked;
+  $("row_waste").classList.toggle("hidden", !includeMaterials);
+  $("row_material_rate").classList.toggle("hidden", !includeMaterials);
+
+  // Manual total shows only when toggle is ON
+  const isCustom = (CURRENT_PRESET?.pricing_type === "CUSTOM");
+  $("row_manual_total").classList.toggle("hidden", !(isCustom && $("use_manual").checked));
+}
+
+function syncMaterialsFromClientSupplies() {
+  // We map "client supplies materials" => include_materials = false
+  // UI hides waste/material input in that case.
+  // include_materials itself is not directly editable to avoid confusion.
+  syncVisibility();
+}
+
+function buildPayload() {
+  const trade_id = $("trade").value;
+  const preset_id = $("preset").value;
+
+  const clientSupplies = $("client_supplies").checked;
+  const include_materials = !clientSupplies;
+
+  const use_manual_total = $("use_manual").checked && (CURRENT_PRESET?.pricing_type === "CUSTOM");
+
+  return {
+    trade_id,
+    preset_id,
+    area_sqft: Number($("area").value),
+    waste_pct: include_materials ? Number($("waste").value) : 0,
+    labor_rate_per_sqft: Number($("labor_rate").value),
+    material_rate_per_sqft: include_materials ? Number($("material_rate").value) : 0,
+    include_labor: $("include_labor").checked,
+    include_materials: include_materials,
+    use_manual_total: use_manual_total,
+    manual_total: use_manual_total ? Number($("manual_total").value) : 0
+  };
+}
+
+function setBreakdown(data) {
+  $("b_area").textContent = `${money(data.actual_area_sqft)} sqft`;
+  $("b_eff").textContent = `${money(data.effective_area_sqft)} sqft`;
+  $("b_labor").textContent = `$${money(data.labor_cost)}`;
+  $("b_mat").textContent = `$${money(data.material_cost)}`;
+  $("b_markup").textContent = `$${money(data.materials_markup_amount)}`;
+  $("b_handling").textContent = `$${money(data.materials_handling_fee)}`;
+  $("b_sub").textContent = `$${money(data.subtotal)}`;
+  $("b_gst").textContent = `$${money(data.gst)}`;
+  $("b_total").textContent = `$${money(data.total)}`;
+
+  const notes = data.notes || [];
+  $("notes").innerHTML = notes.map(n => `<span class="tag">${n}</span>`).join("");
+}
+
+async function calculate() {
+  $("err").textContent = "";
+  const payload = buildPayload();
+
+  const res = await fetch("/api/quote", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    $("err").textContent = txt;
+    return;
+  }
+
+  const data = await res.json();
+  setBreakdown(data);
+}
+
+$("trade").addEventListener("change", loadPresets);
+$("preset").addEventListener("change", applyPresetDefaults);
+$("client_supplies").addEventListener("change", () => { syncMaterialsFromClientSupplies(); });
+$("use_manual").addEventListener("change", syncVisibility);
+$("calc").addEventListener("click", calculate);
+
+loadTrades();
+</script>
+</body>
+</html>

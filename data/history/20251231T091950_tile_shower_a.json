@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "created_at": "2025-12-31T09:19:50",
+    "trade_id": "tile",
+    "trade_label": "Tile",
+    "preset_id": "shower",
+    "preset_label": "Shower",
+    "pricing_type": "CUSTOM",
+    "client_name": "a",
+    "job_address": "1"
+  },
+  "input": {
+    "area_sqft": 113.0,
+    "waste_pct": 10.0,
+    "labor_rate_per_sqft": 10.0,
+    "material_rate_per_sqft": 10.0,
+    "include_labor": true,
+    "include_materials": true,
+    "materials_full_service": false,
+    "materials_handling_fee": 0.0,
+    "materials_markup_pct": 0.0,
+    "manual_total": 1000.0
+  },
+  "output": {
+    "effective_area_sqft": 124.30000000000001,
+    "labor_cost": 1130.0,
+    "material_cost": 1243.0,
+    "materials_markup_amount": 0.0,
+    "materials_handling_fee": 0.0,
+    "subtotal": 1000.0,
+    "gst": 50.0,
+    "total": 1050.0,
+    "notes": [
+      "CUSTOM pricing: manual total used (labor/materials shown for reference)"
+    ]
+  }
+}

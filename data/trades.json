@@ -1,0 +1,37 @@
+{
+  "tile": {
+    "label": "Tile",
+    "gst_rate": 0.05,
+    "presets": {
+      "kitchen_splash": {
+        "label": "Kitchen Backsplash",
+        "pricing_type": "FLAT_MIN_TOTAL",
+        "min_total": 350,
+        "include_labor": true,
+        "include_materials": true,
+        "default_waste_pct": 10,
+        "default_labor_rate_per_sqft": 12.5,
+        "default_material_rate_per_sqft": 8.0,
+        "default_full_service_handling_fee": 150,
+        "default_full_service_markup_pct": 10
+      },
+      "shower": {
+        "label": "Shower",
+        "pricing_type": "CUSTOM",
+        "include_labor": true,
+        "include_materials": true,
+        "default_waste_pct": 15,
+        "default_full_service_handling_fee": 200,
+        "default_full_service_markup_pct": 10
+      },
+      "floor": {
+        "label": "Floor",
+        "pricing_type": "MIN_RATE_PER_SQFT",
+        "min_labor_rate_per_sqft": 8,
+        "include_labor": true,
+        "include_materials": false,
+        "default_labor_rate_per_sqft": 8
+      }
+    }
+  }
+}

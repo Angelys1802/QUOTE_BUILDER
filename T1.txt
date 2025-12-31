@@ -1,0 +1,17 @@
+Trade Quote Builder (CLI) v0.4 (History JSON)
+
+Client:  a
+Address: 1
+Trade:   Tile
+Preset:  Shower [CUSTOM]
+
+Actual area:   113.00 sqft
+Area w/ waste: 124.30 sqft (waste 10.00%)
+Labor:         $1,130.00
+Materials:     $1,243.00
+Subtotal:      $1,000.00
+GST:           $50.00
+TOTAL:         $1,050.00
+
+Notes:
+- CUSTOM pricing: manual total used (labor/materials shown for reference)
