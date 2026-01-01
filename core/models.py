@@ -1,34 +1,41 @@
 from __future__ import annotations
 
+from typing import Literal, List
 from pydantic import BaseModel, Field
-from typing import Literal
 
-Trade = Literal["tile"]  # потім розшириш: "tile" | "drywall" | ...
+
+Trade = Literal["tile"]  # later: extend ("tile", "drywall", ...)
 
 
 class QuoteRequest(BaseModel):
-    sqft: float = Field(ge=0)
-
-    waste_pct: float = Field(default=0, ge=0, le=100)
+    """
+    Input from CLI/UI into calculator engine.
+    """
+    sqft: float = Field(..., ge=0)
+    waste_pct: float = Field(0, ge=0, le=100)
 
     include_labor: bool = True
     include_materials: bool = True
 
-    labor_rate_per_sqft: float = Field(default=0, ge=0)
-    material_rate_per_sqft: float = Field(default=0, ge=0)
+    labor_rate_per_sqft: float = Field(0, ge=0)
+    material_rate_per_sqft: float = Field(0, ge=0)
 
-    # якщо true — total береться з manual_total
+    # If true, total/subtotal are overridden by manual_total
     use_manual_total: bool = False
-    manual_total: float = Field(default=0, ge=0)
+    manual_total: float = Field(0, ge=0)
 
 
 class QuoteResult(BaseModel):
+    """
+    Output returned to UI.
+    """
     sqft_input: float
     sqft_with_waste: float
 
     labor_cost: float
     material_cost: float
+
     subtotal: float
     total: float
 
-    notes: list[str] = []
+    notes: List[str] = Field(default_factory=list)
