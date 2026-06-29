@@ -200,7 +200,7 @@ function buildPayload() {
     trade_id: tid,
     preset_id: pid,
 
-    sqft: Number($("sqft").value),
+    area_sqft: Number($("sqft").value),
     waste_pct: include_materials ? Number($("waste").value) : 0,
 
     include_labor: $("include_labor").checked,
@@ -215,8 +215,8 @@ function buildPayload() {
 }
 
 function setBreakdown(data) {
-  $("b_sqft").textContent = `${money(data.sqft_input)} sqft`;
-  $("b_waste").textContent = `${money(data.sqft_with_waste)} sqft`;
+  $("b_sqft").textContent = `${money(data.actual_area_sqft)} sqft`;
+  $("b_waste").textContent = `${money(data.effective_area_sqft)} sqft`;
   $("b_labor").textContent = `$${money(data.labor_cost)}`;
   $("b_mat").textContent = `$${money(data.material_cost)}`;
   $("b_sub").textContent = `$${money(data.subtotal)}`;

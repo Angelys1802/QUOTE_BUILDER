@@ -21,6 +21,8 @@
         "include_labor": true,
         "include_materials": true,
         "default_waste_pct": 15,
+        "default_labor_rate_per_sqft": 15.0,
+        "default_material_rate_per_sqft": 12.0,
         "default_full_service_handling_fee": 200,
         "default_full_service_markup_pct": 10
       },

@@ -7,8 +7,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from typing import cast
-from core.models import QuoteRequest, Trade
+from core.models import QuoteRequest, TradeConfig
 from core.calculator import calculate_quote
 
 
@@ -91,40 +90,11 @@ def save_quote_json(payload: dict) -> Path:
 
 # ---------- ЗАВАНТАЖЕННЯ CONFIG З JSON ----------
 
-def load_trades_config() -> dict[str, dict]:
-    """Читає data/trades.json і повертає структури у вигляді словників."""
+def load_trades_config() -> dict[str, TradeConfig]:
+    """Читає data/trades.json і повертає Pydantic-моделі TradeConfig."""
     data_path = Path(__file__).resolve().parents[1] / "data" / "trades.json"
     raw = json.loads(data_path.read_text(encoding="utf-8"))
-
-    trades: dict[str, dict] = {}
-
-    for trade_id, trade_cfg in raw.items():
-        presets: dict[str, dict] = {}
-
-        for preset_id, p in trade_cfg.get("presets", {}).items():
-            presets[preset_id] = {
-                "preset_id": preset_id,
-                "label": p["label"],
-                "pricing_type": p.get("pricing_type", "fixed"),
-                "include_labor": bool(p.get("include_labor", True)),
-                "include_materials": bool(p.get("include_materials", True)),
-                "min_total": p.get("min_total"),
-                "min_labor_rate_per_sqft": p.get("min_labor_rate_per_sqft"),
-                "default_waste_pct": p.get("default_waste_pct"),
-                "default_labor_rate_per_sqft": p.get("default_labor_rate_per_sqft"),
-                "default_material_rate_per_sqft": p.get("default_material_rate_per_sqft"),
-                "default_full_service_handling_fee": p.get("default_full_service_handling_fee"),
-                "default_full_service_markup_pct": p.get("default_full_service_markup_pct"),
-            }
-
-        trades[trade_id] = {
-            "trade_id": trade_id,
-            "label": trade_cfg["label"],
-            "gst_rate": float(trade_cfg.get("gst_rate", 0.0)),
-            "presets": presets,
-        }
-
-    return trades
+    return {trade_id: TradeConfig(**cfg) for trade_id, cfg in raw.items()}
 
 
 # ---------- ОСНОВНИЙ CLI СЦЕНАРІЙ ----------
@@ -141,7 +111,7 @@ def run_cli() -> None:
     # --- Вибір trade ---
     print("\nAvailable trades:")
     for k, t in trades.items():
-        print(f" - {k}: {t['label']}")
+        print(f" - {k}: {t.label}")
 
     trade_id = input("\nChoose trade id (example: tile): ").strip().lower()
     if trade_id not in trades:
@@ -151,88 +121,94 @@ def run_cli() -> None:
 
     # --- Вибір preset ---
     print("\nAvailable presets:")
-    for k, p in trade["presets"].items():
-        print(f" - {k}: {p['label']} [{p.get('pricing_type','')}]")
+    for k, p in trade.presets.items():
+        print(f" - {k}: {p.label} [{p.pricing_type}]")
 
     preset_id = input("\nChoose preset id: ").strip().lower()
-    if preset_id not in trade["presets"]:
+    if preset_id not in trade.presets:
         print("❌ Unknown preset id")
         return
-    preset = trade["presets"][preset_id]
+    preset = trade.presets[preset_id]
 
     # --- Ввід площі ---
     area = ask_float("Actual area (sqft): ", min_value=0)
 
     # --- Waste (впливає тільки якщо materials включені) ---
     waste = 0.0
-    if preset.get("include_materials", True):
-        default_waste = float(preset.get("default_waste_pct") or 0.0)
-        waste = ask_float_default("Waste %", default_waste, min_value=0)
+    if preset.include_materials:
+        waste = ask_float_default("Waste %", preset.default_waste_pct, min_value=0)
 
     # --- Ставки (Enter = дефолт) ---
     labor_rate = 0.0
     material_rate = 0.0
 
-    if preset.get("include_labor", True):
-        default_labor = float(preset.get("default_labor_rate_per_sqft") or 0.0)
-        labor_rate = ask_float_default("Labor rate ($/sqft)", default_labor, min_value=0)
+    if preset.include_labor:
+        labor_rate = ask_float_default("Labor rate ($/sqft)", preset.default_labor_rate_per_sqft, min_value=0)
 
-    if preset.get("include_materials", True):
-        default_material = float(preset.get("default_material_rate_per_sqft") or 0.0)
-        material_rate = ask_float_default("Material rate ($/sqft)", default_material, min_value=0)
+    if preset.include_materials:
+        material_rate = ask_float_default("Material rate ($/sqft)", preset.default_material_rate_per_sqft, min_value=0)
 
     # --- Full service materials ---
     materials_full_service = False
     materials_handling_fee = 0.0
     materials_markup_pct = 0.0
 
-    if preset.get("include_materials", True):
+    if preset.include_materials:
         materials_full_service = ask_yes_no("Client wants full service materials (coordination + purchase + delivery)?")
         if materials_full_service:
-            default_fee = float(preset.get("default_full_service_handling_fee") or 0.0)
-            default_markup = float(preset.get("default_full_service_markup_pct") or 0.0)
-            materials_handling_fee = ask_float_default("Materials handling fee ($)", default_fee, min_value=0)
-            materials_markup_pct = ask_float_default("Materials markup %", default_markup, min_value=0)
+            materials_handling_fee = ask_float_default("Materials handling fee ($)", preset.default_full_service_handling_fee, min_value=0)
+            materials_markup_pct = ask_float_default("Materials markup %", preset.default_full_service_markup_pct, min_value=0)
 
     # --- CUSTOM (shower) -> manual total ---
     manual_total = None
     use_manual_total = False
 
-    if str(preset.get("pricing_type", "")).lower() == "custom":
+    if str(preset.pricing_type).upper() == "CUSTOM":
         use_manual_total = ask_yes_no("Use manual total (override calculated total)?")
     if use_manual_total:
         manual_total = ask_float("Enter manual total price ($): ", min_value=0)
+
     # --- Формуємо request для core engine ---
-    # Map CLI values into core QuoteRequest (core expects `sqft` field)
     req = QuoteRequest(
-        sqft=area,
+        trade_id=trade_id,
+        preset_id=preset_id,
+        area_sqft=area,
         labor_rate_per_sqft=labor_rate,
         material_rate_per_sqft=material_rate,
         waste_pct=waste,
-        include_labor=bool(preset.get("include_labor", True)),
-        include_materials=bool(preset.get("include_materials", True)),
-        manual_total=manual_total or 0.0,
+        include_labor=preset.include_labor,
+        include_materials=preset.include_materials,
+        full_service_materials=materials_full_service,
+        materials_handling_fee=materials_handling_fee if materials_full_service else None,
+        materials_markup_pct=materials_markup_pct if materials_full_service else None,
+        manual_total=manual_total,
         use_manual_total=use_manual_total,
     )
 
     # --- Розрахунок через core ---
-    result = calculate_quote(cast(Trade, trade_id), preset_id, req)
+    _preset, _trade, result = calculate_quote(trades, req)
 
     # --- Вивід breakdown ---
     print("\n--- Breakdown ---")
-    print(f"Trade:                 {trade['label']}")
-    print(f"Preset:                {preset['label']} [{preset.get('pricing_type', '')}]")
-    print(f"Actual area:           {result.sqft_input:,.2f} sqft")
+    print(f"Trade:                 {trade.label}")
+    print(f"Preset:                {preset.label} [{preset.pricing_type}]")
+    print(f"Actual area:           {result.actual_area_sqft:,.2f} sqft")
 
-    if preset.get("include_materials", True):
-        print(f"Area w/ waste:         {result.sqft_with_waste:,.2f} sqft (waste {waste:.2f}%)")
+    if preset.include_materials:
+        print(f"Area w/ waste:         {result.effective_area_sqft:,.2f} sqft (waste {waste:.2f}%)")
     else:
         print("Area w/ waste:         (materials not included)")
 
     print(f"Labor:                 {money(result.labor_cost)}")
     print(f"Materials:             {money(result.material_cost)}")
 
+    if result.materials_markup_amount:
+        print(f"Markup:                {money(result.materials_markup_amount)}")
+    if result.materials_handling_fee:
+        print(f"Handling:              {money(result.materials_handling_fee)}")
+
     print(f"Subtotal:              {money(result.subtotal)}")
+    print(f"GST:                   {money(result.gst)}")
     print(f"TOTAL:                 {money(result.total)}")
 
     if result.notes:
@@ -249,11 +225,11 @@ def run_cli() -> None:
         payload = {
             "meta": {
                 "created_at": created_at,
-                "trade_id": trade.get("trade_id"),
-                "trade_label": trade.get("label"),
-                "preset_id": preset.get("preset_id"),
-                "preset_label": preset.get("label"),
-                "pricing_type": preset.get("pricing_type"),
+                "trade_id": trade_id,
+                "trade_label": trade.label,
+                "preset_id": preset_id,
+                "preset_label": preset.label,
+                "pricing_type": str(preset.pricing_type),
                 "client_name": client_name,
                 "job_address": job_address,
             },
@@ -262,22 +238,22 @@ def run_cli() -> None:
                 "waste_pct": waste,
                 "labor_rate_per_sqft": labor_rate,
                 "material_rate_per_sqft": material_rate,
-                "include_labor": preset.get("include_labor", True),
-                "include_materials": preset.get("include_materials", True),
+                "include_labor": preset.include_labor,
+                "include_materials": preset.include_materials,
                 "materials_full_service": materials_full_service,
                 "materials_handling_fee": materials_handling_fee,
                 "materials_markup_pct": materials_markup_pct,
                 "manual_total": manual_total,
             },
             "output": {
-                "sqft_input": result.sqft_input,
-                "sqft_with_waste": result.sqft_with_waste,
+                "actual_area_sqft": result.actual_area_sqft,
+                "effective_area_sqft": result.effective_area_sqft,
                 "labor_cost": result.labor_cost,
                 "material_cost": result.material_cost,
-                "materials_markup_amount": 0.0,
-                "materials_handling_fee": materials_handling_fee or 0.0,
+                "materials_markup_amount": result.materials_markup_amount,
+                "materials_handling_fee": result.materials_handling_fee,
                 "subtotal": result.subtotal,
-                "gst": 0.0,
+                "gst": result.gst,
                 "total": result.total,
                 "notes": result.notes,
             },
@@ -297,26 +273,25 @@ def run_cli() -> None:
                 f.write(f"Client:  {client_name}\n")
             if job_address:
                 f.write(f"Address: {job_address}\n")
-            f.write(f"Trade:   {trade.get('label')}\n")
-            f.write(f"Preset:  {preset.get('label')} [{preset.get('pricing_type','')}]\n\n")
+            f.write(f"Trade:   {trade.label}\n")
+            f.write(f"Preset:  {preset.label} [{preset.pricing_type}]\n\n")
 
-            f.write(f"Actual area:   {result.sqft_input:,.2f} sqft\n")
-            if preset.get('include_materials', True):
-                f.write(f"Area w/ waste: {result.sqft_with_waste:,.2f} sqft (waste {waste:.2f}%)\n")
+            f.write(f"Actual area:   {result.actual_area_sqft:,.2f} sqft\n")
+            if preset.include_materials:
+                f.write(f"Area w/ waste: {result.effective_area_sqft:,.2f} sqft (waste {waste:.2f}%)\n")
             else:
                 f.write("Area w/ waste: (materials not included)\n")
 
             f.write(f"Labor:         {money(result.labor_cost)}\n")
             f.write(f"Materials:     {money(result.material_cost)}\n")
 
-            if materials_markup_pct and materials_markup_pct > 0:
-                # CLI-collected markup (not applied in core)
-                f.write(f"Markup:        {money((materials_markup_pct/100.0)*result.material_cost)}\n")
-            if materials_handling_fee and materials_handling_fee > 0:
-                f.write(f"Handling:      {money(materials_handling_fee)}\n")
+            if result.materials_markup_amount:
+                f.write(f"Markup:        {money(result.materials_markup_amount)}\n")
+            if result.materials_handling_fee:
+                f.write(f"Handling:      {money(result.materials_handling_fee)}\n")
 
             f.write(f"Subtotal:      {money(result.subtotal)}\n")
-            f.write(f"GST:           {money(0.0)}\n")
+            f.write(f"GST:           {money(result.gst)}\n")
             f.write(f"TOTAL:         {money(result.total)}\n")
 
             if result.notes:

@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from core.models import TradeConfig, QuoteRequest, QuoteResult
 from core.calculator import calculate_quote
@@ -25,7 +26,6 @@ app = FastAPI(title="Quote Builder API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -54,3 +54,8 @@ def quote(req: QuoteRequest = Body(...)) -> QuoteResult:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid request: {e}")
+
+
+# Serve the static web UI at /  (must be mounted last so API routes take priority)
+_static_dir = Path(__file__).parent / "static"
+app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
